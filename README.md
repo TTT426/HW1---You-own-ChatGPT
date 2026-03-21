@@ -11,11 +11,31 @@ On browser
 ```
 http://localhost:5000/
 ```
-
+# How to set a new language UI design? 
+1. open config/ui.config
+And use this template
+```
+# your new language
+FONT_UI_{your new language}={Font Style}
+FONT_MONO_{your new language}={Font Style}
+``
+2. Fillin all items translate result in your new language [tempmethod]
+For example
+```
+"zh-TW": {
+      "appTitle": "My ChatGPT",
+      "settings": "設定",
+      "provider": "服務商",
+      "model": "模型",
+      "systemPrompt": "系統提示詞",
+      ...
+    }
+```
 # How to UpLoad a template?
 Add it into input/{your_templatename}.pptx
 
 # How to Add model?
+0. need add config/api_key.config manually
 1. open config/providers.json
 2. using this template
 The name in "label" can name it anything
