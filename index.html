@@ -27,13 +27,12 @@
       <label>Provider</label>
       <select id="provider-select" onchange="onProviderChange()">
         <option value="groq">Groq (免費)</option>
-        <option value="nvidia">NVIDIA NIM (免費)</option>
         <option value="ollama">Ollama (本機)</option>
       </select>
     </div>
 
-    <!-- API Key (hidden for Ollama) -->
-    <div class="sidebar-section" id="api-key-section">
+    <!-- API Key (hidden — loaded from config/api_key.config) -->
+    <div class="sidebar-section" id="api-key-section" style="display:none;">
       <label id="api-key-label">API Key</label>
       <div class="api-key-wrap">
         <input type="password" id="api-key" placeholder="gsk_..." />

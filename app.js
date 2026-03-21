@@ -13,19 +13,19 @@ const PROVIDERS = {
       { value: 'gemma2-9b-it',                       label: 'Gemma 2 9B' },
     ],
   },
-  nvidia: {
-    label:       'NVIDIA NIM',
-    keyPrefix:   'nvapi-',
-    placeholder: 'nvapi-...',
-    endpoint:    'https://integrate.api.nvidia.com/v1/chat/completions',
-    models: [
-      { value: 'moonshotai/kimi-k2',                          label: 'Kimi K2' },
-      { value: 'nvidia/llama-3.1-nemotron-ultra-253b-v1',     label: 'Nemotron Ultra 253B' },
-      { value: 'meta/llama-4-maverick-17b-128e-instruct',     label: 'Llama 4 Maverick 17B' },
-      { value: 'meta/llama-3.3-70b-instruct',                 label: 'Llama 3.3 70B' },
-      { value: 'mistralai/mistral-large-2-instruct',          label: 'Mistral Large 2' },
-    ],
-  },
+  // nvidia: {
+  //   label:       'NVIDIA NIM',
+  //   keyPrefix:   'nvapi-',
+  //   placeholder: 'nvapi-...',
+  //   endpoint:    'https://integrate.api.nvidia.com/v1/chat/completions',
+  //   models: [
+  //     { value: 'moonshotai/kimi-k2',                          label: 'Kimi K2' },
+  //     { value: 'nvidia/llama-3.1-nemotron-ultra-253b-v1',     label: 'Nemotron Ultra 253B' },
+  //     { value: 'meta/llama-4-maverick-17b-128e-instruct',     label: 'Llama 4 Maverick 17B' },
+  //     { value: 'meta/llama-3.3-70b-instruct',                 label: 'Llama 3.3 70B' },
+  //     { value: 'mistralai/mistral-large-2-instruct',          label: 'Mistral Large 2' },
+  //   ],
+  // },
   ollama: {
     label:       'Ollama',
     keyPrefix:   null,   // no key needed
@@ -105,8 +105,7 @@ function onProviderChange() {
   const cfg      = PROVIDERS[provider];
   const isOllama = provider === 'ollama';
 
-  // Show/hide API key vs Ollama URL
-  document.getElementById('api-key-section').style.display  = isOllama ? 'none' : '';
+  // Show/hide Ollama URL
   document.getElementById('ollama-url-section').style.display = isOllama ? '' : 'none';
 
   // Update placeholder
@@ -174,7 +173,7 @@ function getConfig() {
   const base     = document.getElementById('ollama-url').value.replace(/\/$/, '');
   return {
     provider,
-    apiKey:       document.getElementById('api-key').value.trim(),
+    apiKey:       apiKeys[provider] || '',
     ollamaBase:   base,
     model:        document.getElementById('model-select').value,
     systemPrompt: document.getElementById('system-prompt').value.trim(),
@@ -345,5 +344,28 @@ async function sendMessage() {
   }
 }
 
+// ── API Keys (loaded from config/api_key.config) ──
+let apiKeys = { groq: ''};
+
+async function loadApiKeys() {
+  try {
+    const res  = await fetch('./config/api_key.config');
+    const text = await res.text();
+
+    text.split('\n').forEach(line => {
+      line = line.trim();
+      if (!line || line.startsWith('#')) return;
+      const [key, ...rest] = line.split('=');
+      const value = rest.join('=').trim();
+      if (key.trim() === 'GROQ_API_KEY')   apiKeys.groq   = value;
+      if (key.trim() === 'NVIDIA_API_KEY') apiKeys.nvidia = value;
+    });
+
+    console.log('✅ API keys loaded from config/api_key.config');
+  } catch (e) {
+    console.warn('⚠️ 無法讀取 config/api_key.config：', e.message);
+  }
+}
+
 // ── Init ──
-onProviderChange();
+loadApiKeys().then(() => onProviderChange());
