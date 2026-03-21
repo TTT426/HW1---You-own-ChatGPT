@@ -109,7 +109,12 @@ async function autoGenerateTitle() {
     const req = buildRequest(  // app.js 的 buildRequest
       { ...cfg, maxTokens: 20 },
       [
-        { role: 'system', content: '你是標題生成器。根據對話內容，用繁體中文生成一個 10 字以內的簡短標題。只輸出標題文字，不加任何標點或說明。' },
+        { role: 'system', content: (() => {
+          const lang = document.getElementById('lang-select')?.value || 'zh-TW';
+          if (lang === 'en') return 'You are a title generator. Given a conversation, write a short English title (max 6 words). Output only the title, no punctuation or explanation.';
+          if (lang === 'ja') return 'あなたはタイトル生成器です。会話内容をもとに、10文字以内の日本語タイトルを生成してください。タイトルのみ出力し、説明や記号は不要です。';
+          return '你是標題生成器。根據對話內容，用繁體中文生成一個 10 字以內的簡短標題。只輸出標題文字，不加任何標點或說明。';
+        })() },
         { role: 'user',   content: snippet },
       ],
       false
@@ -223,7 +228,8 @@ function formatRelativeDate(ts) {
   if (min  < 60) return `${min} ${t.timeMinAgo || '分鐘前'}`;
   if (hr   < 24) return `${hr} ${t.timeHrAgo  || '小時前'}`;
   if (day  <  7) return `${day} ${t.timeDayAgo || '天前'}`;
-  return new Date(ts).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+  const lang = document.getElementById('lang-select')?.value || 'zh-TW';
+  return new Date(ts).toLocaleDateString(lang, { month: 'short', day: 'numeric' });
 }
 
 function escHist(str) {
@@ -239,8 +245,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. 啟動時建立新對話 id
   newConversation();
 
-  // 2. 監聽 languageChanged 事件（由 app.js 的 switchLanguage 在 t 更新後觸發）
-  window.addEventListener('languageChanged', () => renderHistorySidebar());
+  // 2. Patch switchLanguage：切換語言後重新 render sidebar
+  const _origSwitchLang = window.switchLanguage;
+  window.switchLanguage = async function(lang) {
+    await _origSwitchLang?.(lang);
+    renderHistorySidebar();
+  };
 
   // 3. Patch clearHistory：清除後也重置 id
   const _origClear = window.clearHistory;
