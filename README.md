@@ -12,6 +12,9 @@ On browser
 http://localhost:5000/
 ```
 
+# How to UpLoad a template?
+Add it into input/{your_templatename}.pptx
+
 # How to Add model?
 1. open config/providers.json
 2. using this template

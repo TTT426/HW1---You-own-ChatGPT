@@ -868,3 +868,360 @@ textarea {
   color: #aaa;
   font-size: 14px;
 }
+/* ── Template Picker ── */
+.ppt-dl-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 選範本按鈕 */
+.btn-pick-template {
+  padding: 5px 12px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.btn-pick-template:hover { border-color: var(--accent); color: #fff; }
+.btn-pick-template.selected { border-color: var(--accent); color: var(--accent); }
+
+/* Modal 遮罩 */
+.template-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.template-modal-overlay.open { display: flex; }
+
+/* Modal 本體 */
+.template-modal {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 12px;
+  width: 860px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.template-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #eee;
+}
+.template-modal-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+}
+.template-modal-close:hover { color: #fff; }
+
+/* 範本卡片 grid */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.template-card {
+  border: 2px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+  background: #111;
+}
+.template-card:hover { border-color: #555; transform: translateY(-2px); }
+.template-card.active { border-color: var(--accent); }
+
+/* PDF iframe 預覽 */
+.template-card-preview {
+  width: 100%;
+  height: 140px;
+  border: none;
+  pointer-events: none;   /* 讓點擊穿透到 card */
+  background: #222;
+  display: block;
+}
+.template-card-preview-placeholder {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 28px;
+  background: #1a1a1a;
+}
+
+.template-card-label {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #ccc;
+  border-top: 1px solid #222;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.template-card.active .template-card-label { color: var(--accent); }
+
+/* Modal footer */
+.template-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.btn-template-confirm {
+  padding: 7px 18px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-template-confirm:hover { background: #1d4ed8; }
+.btn-template-cancel {
+  padding: 7px 18px;
+  background: #333;
+  border: none;
+  border-radius: 6px;
+  color: #ccc;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ── PPT 結果預覽 ── */
+.ppt-result-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 10px;
+  overflow: visible;        /* 不能 hidden，否則 loading overlay 被裁掉 */
+  border: 1px solid #333;
+  min-width: 480px;
+  position: relative;       /* 讓 overlay 定位用 */
+}
+/* 讓圓角視覺上仍然有效，但不裁剪子元素 */
+.ppt-result-header,
+.ppt-result-footer,
+.carousel-counter {
+  overflow: hidden;
+}
+.ppt-result-header { border-radius: 10px 10px 0 0; }
+.ppt-result-footer { border-radius: 0 0 10px 10px; }
+.ppt-result-header {
+  padding: 10px 14px;
+  background: #1a1a1a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #ccc;
+}
+.ppt-result-preview {
+  width: 100%;
+  height: 360px;
+  border: none;
+  background: #111;
+  display: block;
+}
+.ppt-result-footer {
+  padding: 10px 14px;
+  background: #1a1a1a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #2a2a2a;
+}
+
+/* ── 投影片輪播 ── */
+.slide-carousel {
+  position: relative;
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+.carousel-viewport {
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.carousel-slide {
+  display: none;
+  width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+}
+.carousel-slide.active { display: block; }
+
+.carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0,0,0,0.55);
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: 6px;
+  z-index: 2;
+  transition: background 0.15s;
+}
+.carousel-btn:hover { background: rgba(0,0,0,0.85); }
+.carousel-btn.prev { left: 8px; }
+.carousel-btn.next { right: 8px; }
+
+.carousel-counter {
+  text-align: center;
+  font-size: 12px;
+  color: #666;
+  padding: 6px 0;
+  background: #1a1a1a;
+}
+
+/* ── Slide Editor ── */
+.slide-editor-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+.slide-editor-overlay.open { display: flex; }
+
+.slide-editor-modal {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 12px;
+  width: 520px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.slide-editor-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #eee;
+}
+.slide-editor-header button {
+  background: none; border: none; color: #888; font-size: 18px; cursor: pointer;
+}
+.slide-editor-body {
+  padding: 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.slide-editor-body label {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-top: 6px;
+}
+.edit-field {
+  width: 100%;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #eee;
+  font-size: 14px;
+  padding: 8px 10px;
+  font-family: var(--sans);
+  resize: vertical;
+  box-sizing: border-box;
+}
+.edit-field:focus { outline: none; border-color: var(--accent); }
+.slide-editor-footer {
+  padding: 12px 18px;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 投影片 hover 提示 */
+.carousel-slide { position: relative; cursor: pointer; }
+.carousel-slide img { width: 100%; display: block; transition: opacity 0.2s; }
+.carousel-slide:hover img { opacity: 0.85; }
+.slide-edit-hint {
+  position: absolute;
+  bottom: 8px; right: 10px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.carousel-slide:hover .slide-edit-hint { opacity: 1; }
+
+
+/* ── 重新產生 loading overlay ── */
+.regen-loading-overlay {
+  display: none;
+  position: fixed;          /* fixed 不受父層 overflow 影響 */
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+}
+.regen-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: #eee;
+  font-size: 14px;
+  text-align: center;
+}
+.regen-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #444;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
