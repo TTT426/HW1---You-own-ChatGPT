@@ -1,5 +1,9 @@
 # Step
-In terminal
+Terminal 1
+```
+uvicorn server:app --reload --port 8000
+```
+Terminal 2
 ```
 python3 -m http.server 5000
 ```

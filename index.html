@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HW01 — My ChatGPT</title>
+  <title>HW01 — Your own ChatGPT</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 </head>
 <body>
 
@@ -24,7 +25,7 @@
 
     <!-- Provider -->
     <div class="sidebar-section">
-      <label>Provider</label>
+      <label data-i18n="provider">Provider</label>
       <select id="provider-select" onchange="onProviderChange()">
         <option value="groq">Groq (免費)</option>
         <option value="ollama">Ollama (本機)</option>
@@ -42,13 +43,13 @@
 
     <!-- Ollama Base URL (only shown for Ollama) -->
     <div class="sidebar-section" id="ollama-url-section" style="display:none;">
-      <label>Ollama Base URL</label>
+      <label data-i18n="ollamaUrl">Ollama Base URL</label>
       <input type="text" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434" />
     </div>
 
     <!-- Model -->
     <div class="sidebar-section">
-      <label>模型 Model</label>
+      <label data-i18n="model">模型 Model</label>
       <select id="model-select" onchange="onModelChange()">
         <!-- populated by JS -->
       </select>
@@ -56,42 +57,45 @@
 
     <!-- System Prompt -->
     <div class="sidebar-section">
-      <label>System Prompt</label>
+      <label data-i18n="systemPrompt">System Prompt</label>
       <textarea id="system-prompt" placeholder="你是一個有幫助的 AI 助手…">你是一個有幫助、誠實、且無害的 AI 助手。請用繁體中文回應。</textarea>
     </div>
 
     <!-- API Params -->
     <div class="sidebar-section">
-      <label>API 參數</label>
+      <label data-i18n="apiParams">API 參數</label>
       <div class="param-row">
         <div class="param-item">
-          <label>Temperature</label>
+          <label data-i18n="temperature">Temperature</label>
           <input type="number" id="temperature" value="0.7" min="0" max="2" step="0.1" />
         </div>
         <div class="param-item">
-          <label>Max Tokens</label>
+          <label data-i18n="maxTokens">Max Tokens</label>
           <input type="number" id="max-tokens" value="1024" min="1" max="32768" step="1" />
         </div>
         <div class="param-item">
-          <label>Top P</label>
+          <label data-i18n="topP">Top P</label>
           <input type="number" id="top-p" value="1" min="0" max="1" step="0.05" />
         </div>
         <div class="param-item">
-          <label>記憶回合數</label>
+          <label data-i18n="memoryTurns">記憶回合數</label>
           <input type="number" id="memory-turns" value="10" min="1" max="50" step="1" />
         </div>
       </div>
     </div>
 
+    <!-- Options -->
     <div class="sidebar-section">
-      <label>選項</label>
+      <label data-i18n="options">選項</label>
       <div class="toggle-row">
         <input type="checkbox" id="streaming-toggle" checked />
         <label for="streaming-toggle" class="toggle-label">Streaming（逐字顯示）</label>
       </div>
     </div>
 
+    <!-- Actions -->
     <div class="sidebar-section">
+      <button class="btn-summarize" id="summarize-btn" onclick="summarizeHistory()">📝 摘要對話 → System Prompt</button>
       <button class="btn-clear" onclick="clearHistory()">🗑 清除對話記憶</button>
     </div>
 
@@ -101,8 +105,15 @@
 <!-- Main Chat -->
 <main id="main">
   <header id="chat-header">
-    <h1>My ChatGPT</h1>
-    <span id="model-badge">-</span>
+    <h1>HW1 Your Own ChatGPT</h1>
+    <div class="chat-header-right">
+      <select id="lang-select" onchange="switchLanguage(this.value)" title="Language">
+        <option value="zh-TW">繁中</option>
+        <option value="en">EN</option>
+        <option value="ja">日本語</option>
+      </select>
+      <span id="model-badge">-</span>
+    </div>
   </header>
 
   <div id="messages">
@@ -117,12 +128,19 @@
   <div id="input-area">
     <div class="input-box">
       <textarea id="user-input" placeholder="輸入訊息… (Enter 送出，Shift+Enter 換行)" rows="1"></textarea>
+      <button id="image-btn" onclick="generateImageFromInput()" title="AI 生圖">🎨</button>
+      <button id="ppt-btn" onclick="generatePptFromInput()" title="AI 製作簡報">🎞️</button>
       <button id="send-btn" onclick="sendMessage()">➤</button>
     </div>
-    <p class="hint">Streaming • 短期記憶 • 自訂參數</p>
+    <p class="hint">Streaming • 短期記憶 • 自訂參數 • 🎨 生圖</p>
   </div>
 </main>
 
+<!-- PPT hidden inputs -->
+<input type="hidden" id="ppt-topic" />
+<input type="hidden" id="ppt-slides" value="6" />
+
 <script src="app.js"></script>
+<script src="ppt.js"></script>
 </body>
 </html>
