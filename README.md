@@ -15,10 +15,9 @@ http://localhost:5000/
 1. open config/ui.config
 And use this template
 ```
-# your new language
 FONT_UI_{your new language}={Font Style}
 FONT_MONO_{your new language}={Font Style}
-``
+```
 2. Fillin all items translate result in your new language [tempmethod]
 For example
 ```
