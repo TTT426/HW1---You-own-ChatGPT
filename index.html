@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HW01 — My ChatGPT</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside id="sidebar">
+  <div id="resize-handle"></div>
+  <div class="sidebar-header">
+    <div class="sidebar-header-left">
+      <span class="dot"></span>
+      <span class="sidebar-header-text">Settings</span>
+    </div>
+    <button id="toggle-sidebar" title="收合 / 展開" onclick="toggleSidebar()">◀</button>
+  </div>
+
+  <div class="sidebar-content">
+
+    <!-- Provider -->
+    <div class="sidebar-section">
+      <label>Provider</label>
+      <select id="provider-select" onchange="onProviderChange()">
+        <option value="groq">Groq (免費)</option>
+        <option value="nvidia">NVIDIA NIM (免費)</option>
+        <option value="ollama">Ollama (本機)</option>
+      </select>
+    </div>
+
+    <!-- API Key (hidden for Ollama) -->
+    <div class="sidebar-section" id="api-key-section">
+      <label id="api-key-label">API Key</label>
+      <div class="api-key-wrap">
+        <input type="password" id="api-key" placeholder="gsk_..." />
+        <button class="toggle-key" onclick="toggleKey()">👁</button>
+      </div>
+    </div>
+
+    <!-- Ollama Base URL (only shown for Ollama) -->
+    <div class="sidebar-section" id="ollama-url-section" style="display:none;">
+      <label>Ollama Base URL</label>
+      <input type="text" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434" />
+    </div>
+
+    <!-- Model -->
+    <div class="sidebar-section">
+      <label>模型 Model</label>
+      <select id="model-select" onchange="onModelChange()">
+        <!-- populated by JS -->
+      </select>
+    </div>
+
+    <!-- System Prompt -->
+    <div class="sidebar-section">
+      <label>System Prompt</label>
+      <textarea id="system-prompt" placeholder="你是一個有幫助的 AI 助手…">你是一個有幫助、誠實、且無害的 AI 助手。請用繁體中文回應。</textarea>
+    </div>
+
+    <!-- API Params -->
+    <div class="sidebar-section">
+      <label>API 參數</label>
+      <div class="param-row">
+        <div class="param-item">
+          <label>Temperature</label>
+          <input type="number" id="temperature" value="0.7" min="0" max="2" step="0.1" />
+        </div>
+        <div class="param-item">
+          <label>Max Tokens</label>
+          <input type="number" id="max-tokens" value="1024" min="1" max="32768" step="1" />
+        </div>
+        <div class="param-item">
+          <label>Top P</label>
+          <input type="number" id="top-p" value="1" min="0" max="1" step="0.05" />
+        </div>
+        <div class="param-item">
+          <label>記憶回合數</label>
+          <input type="number" id="memory-turns" value="10" min="1" max="50" step="1" />
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <label>選項</label>
+      <div class="toggle-row">
+        <input type="checkbox" id="streaming-toggle" checked />
+        <label for="streaming-toggle" class="toggle-label">Streaming（逐字顯示）</label>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <button class="btn-clear" onclick="clearHistory()">🗑 清除對話記憶</button>
+    </div>
+
+  </div><!-- end sidebar-content -->
+</aside>
+
+<!-- Main Chat -->
+<main id="main">
+  <header id="chat-header">
+    <h1>My ChatGPT</h1>
+    <span id="model-badge">-</span>
+  </header>
+
+  <div id="messages">
+    <div class="msg-wrap">
+      <div id="empty-state">
+        <div class="icon">💬</div>
+        <p>開始對話吧！</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <div class="input-box">
+      <textarea id="user-input" placeholder="輸入訊息… (Enter 送出，Shift+Enter 換行)" rows="1"></textarea>
+      <button id="send-btn" onclick="sendMessage()">➤</button>
+    </div>
+    <p class="hint">Streaming • 短期記憶 • 自訂參數</p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
