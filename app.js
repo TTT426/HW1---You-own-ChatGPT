@@ -397,6 +397,8 @@ async function switchLanguage(lang) {
     applyFontsForLang(lang);
 
     console.log(`✅ Switched to ${lang}`);
+    // 通知其他模組語言已切換
+    window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang } }));
   } catch (e) {
     console.warn('⚠️ Failed to switch language:', e.message);
   }

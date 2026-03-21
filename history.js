@@ -81,7 +81,7 @@ function saveCurrentConv(title) {
     const clone = document.querySelector('.msg-wrap')?.cloneNode(true);
     if (!clone) return '';
     clone.querySelectorAll('.ppt-msg').forEach(el => {
-      el.innerHTML = '<em style="color:var(--muted)">［PPT 簡報 — 請重新生成以編輯］</em>';
+      el.innerHTML = '<em style="color:var(--muted)">${t.pptRestorePlaceholder}</em>';
     });
     return clone.innerHTML;
   })(),
@@ -202,8 +202,8 @@ function renderHistorySidebar() {
 
   section.innerHTML = `
     <div class="history-header">
-      <span class="history-label">Recents</span>
-      <button class="btn-new-conv" onclick="newConversation()" title="新對話">＋</button>
+      <span class="history-label">${t.recents || 'Recents'}</span>
+      <button class="btn-new-conv" onclick="newConversation()" title="${t.newConv || '新對話'}">＋</button>
     </div>
     <div class="history-list">${items}</div>`;
 }
@@ -219,10 +219,10 @@ function formatRelativeDate(ts) {
   const min  = Math.floor(diff / 60000);
   const hr   = Math.floor(diff / 3600000);
   const day  = Math.floor(diff / 86400000);
-  if (min  <  1) return '剛才';
-  if (min  < 60) return `${min} 分鐘前`;
-  if (hr   < 24) return `${hr} 小時前`;
-  if (day  <  7) return `${day} 天前`;
+  if (min  <  1) return t.timeJustNow || '剛才';
+  if (min  < 60) return `${min} ${t.timeMinAgo || '分鐘前'}`;
+  if (hr   < 24) return `${hr} ${t.timeHrAgo  || '小時前'}`;
+  if (day  <  7) return `${day} ${t.timeDayAgo || '天前'}`;
   return new Date(ts).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
 }
 
@@ -239,7 +239,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. 啟動時建立新對話 id
   newConversation();
 
-  // 2. Patch clearHistory：清除後也重置 id
+  // 2. 監聽 languageChanged 事件（由 app.js 的 switchLanguage 在 t 更新後觸發）
+  window.addEventListener('languageChanged', () => renderHistorySidebar());
+
+  // 3. Patch clearHistory：清除後也重置 id
   const _origClear = window.clearHistory;
   window.clearHistory = function() {
     saveCurrentConv();   // 先存現有的
