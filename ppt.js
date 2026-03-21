@@ -1,4 +1,5 @@
 // ── PPT Module ──
+const _pptDataMap = {};
 // 新流程：
 //   1. 使用者在 input-area 選好範本（btn-pick-template 顯示在輸入框旁）
 //   2. 按 🎞️ → AI 生成 slides JSON → POST /generate-pptx → 後端產生 pptx + 轉 PDF
@@ -262,8 +263,9 @@ const PPT_THEMES = {
   
       msgText.innerHTML = renderSlideCarousel(slideUrls, job_id, topic, themeName);
   
-      // 儲存完整資料供 editor 使用
-      msgText._pptData = {
+      // 儲存完整資料供 editor 使用（存在全域 Map，避免 innerHTML 還原後遺失）
+      const _uid = 'carousel-' + job_id.slice(0, 8);
+      _pptDataMap[_uid] = {
         slides, topic, themeName,
         jobId   : job_id,
         template: _selectedTemplate?.name || null,
@@ -326,10 +328,11 @@ const PPT_THEMES = {
   function openSlideEditor(uid, slideIdx) {
     // 找到這個 carousel 對應的 msgText，從裡面取 _pptData
     const wrap    = document.getElementById('wrap-' + uid);
-    const msgText = wrap?.closest('.msg-text');
-    if (!msgText?._pptData) return;
+    if (!wrap) return;
+    const pptData = _pptDataMap[uid];
+    if (!pptData) { console.warn('_pptData not found for uid:', uid); return; }
   
-    const { slides, jobId, topic, themeName, template } = msgText._pptData;
+    const { slides, jobId, topic, themeName, template } = pptData;
     const sd = slides[slideIdx];
   
     // 建立 editor overlay
@@ -394,10 +397,9 @@ const PPT_THEMES = {
   
   async function applySlideEdit(uid, slideIdx) {
     const wrap    = document.getElementById('wrap-' + uid);
-    const msgText = wrap?.closest('.msg-text');
-    if (!msgText?._pptData) return;
-  
-    const data = msgText._pptData;
+    if (!wrap) return;
+    const data = _pptDataMap[uid];
+    if (!data) return;
     const sd   = data.slides[slideIdx];
   
     // 讀取欄位更新 slides
@@ -437,26 +439,24 @@ const PPT_THEMES = {
       const previewResp = await fetch(`${API_BASE}${preview_url}`);
       const { slides: newUrls } = await previewResp.json();
   
-      // Refresh 輪播圖片
-      const slideEls = carousel.querySelectorAll('.carousel-slide');
-      newUrls.forEach((url, i) => {
-        const img = slideEls[i]?.querySelector('img');
-        if (img) {
-          img.src     = `${API_BASE}${url}?t=${Date.now()}`;  // 強制 refresh
-          img.style.opacity = '1';
-          img.onclick = () => openSlideEditor(uid, i);
-        }
-      });
-  
+         // 重建整個輪播 viewport，強制瀏覽器重新載入所有圖片
+      const ts = Date.now();
+      const viewport = carousel.querySelector('.carousel-viewport');
+      viewport.innerHTML = newUrls.map((url, i) => `
+        <div class="carousel-slide ${i === slideIdx ? 'active' : ''}" data-idx="${i}">
+          <img src="${API_BASE}${url}?t=${ts + i}" loading="lazy"
+               onclick="openSlideEditor('${uid}', ${i})"
+               title="點擊編輯此頁內容" />
+          <div class="slide-edit-hint">✏️ 點擊編輯</div>
+        </div>`).join('');
+
       // 更新下載按鈕的 jobId
       const dlBtn = wrap.querySelector('.btn-ppt-dl');
       if (dlBtn) dlBtn.onclick = () => downloadPptx(dlBtn, job_id, data.topic);
-  
-      // 跳到被編輯的頁
-      slideEls.forEach(s => s.classList.remove('active'));
-      slideEls[slideIdx]?.classList.add('active');
+
+      // 更新頁數計數器
       const counter = document.getElementById(uid + '-counter');
-      if (counter) counter.textContent = `${slideIdx + 1} / ${slideEls.length}`;
+      if (counter) counter.textContent = `${slideIdx + 1} / ${newUrls.length}`;
   
     } catch(e) {
       alert('重新產生失敗：' + e.message);
