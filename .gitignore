@@ -1,4 +1,4 @@
-config/
+config/api_key.config
 venv/
 __pycache__/
 cache/
