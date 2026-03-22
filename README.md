@@ -1,3 +1,12 @@
+# Environment setup(under linux)
+```
+git clone this resporsity
+cd this resporsity
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+soffice --version (Should display like LibreOffice 6.x.x)
+```
 # Step
 Terminal 1
 ```
