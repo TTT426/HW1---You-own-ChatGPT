@@ -5,10 +5,11 @@
         "endpoint": "https://api.groq.com/openai/v1/chat/completions",
         "keyPrefix": "gsk_",
         "models": [
-          { "value": "moonshotai/kimi-k2-instruct",                   "label": "Kimi K2" },
-          { "value": "llama-3.3-70b-versatile",                       "label": "Llama 3.3 70B" },
-          { "value": "llama-3.1-8b-instant",                          "label": "Llama 3.1 8B" },
-          { "value": "testmodel",                                  "label": "testmodel" }
+          { "value": "moonshotai/kimi-k2-instruct",                        "label": "Kimi K2" },
+          { "value": "llama-3.3-70b-versatile",                            "label": "Llama 3.3 70B" },
+          { "value": "llama-3.1-8b-instant",                               "label": "Llama 3.1 8B" },
+          { "value": "meta-llama/llama-4-scout-17b-16e-instruct",          "label": "Llama 4 Scout (Vision)" },
+          { "value": "meta-llama/llama-4-maverick-17b-128e-instruct",      "label": "Llama 4 Maverick (Vision)" }
         ]
       },
       "ollama": {

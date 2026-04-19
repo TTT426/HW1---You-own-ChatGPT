@@ -59,7 +59,7 @@ const PPT_THEMES = {
   async function fetchTemplates() {
     if (_templates.length) return _templates;
     try {
-      const resp = await fetch(`${API_BASE}/templates`);
+      const resp = await fetch(`${API_BASE}/templates`, { cache: 'no-store' });
       if (!resp.ok) throw new Error();
       const { templates } = await resp.json();
       _templates = templates;

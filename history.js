@@ -269,5 +269,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 回覆完成後
     saveCurrentConv();
     if (!_titleGenerated) autoGenerateTitle();
+    // 背景萃取長期記憶（至少 2 輪對話才觸發）
+    if (typeof extractMemoriesFromHistory === 'function' && history.filter(m => m.role === 'user').length >= 2) {
+      extractMemoriesFromHistory([...history], _currentConvId);
+    }
   };
 });

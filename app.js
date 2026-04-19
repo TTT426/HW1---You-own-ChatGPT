@@ -40,6 +40,82 @@ document.addEventListener('mouseup', () => {
 
 let history = [];
 let isStreaming = false;
+let pendingImage = null; // { dataUrl, mimeType }
+
+// ── Multimodal image upload ──
+function triggerImgUpload() {
+  document.getElementById('img-upload').click();
+}
+
+function renderImgPreview() {
+  const preview = document.getElementById('img-preview');
+  if (!preview) return;
+  if (!pendingImage) { preview.innerHTML = ''; return; }
+  preview.innerHTML = `
+    <div class="img-preview-wrap">
+      <img src="${pendingImage.dataUrl}" class="img-preview-thumb" alt="preview" />
+      <button class="img-preview-remove" onclick="clearPendingImage()" title="移除">✕</button>
+    </div>`;
+}
+
+function clearPendingImage() {
+  pendingImage = null;
+  renderImgPreview();
+  const attachBtn = document.getElementById('attach-btn');
+  if (attachBtn) attachBtn.classList.remove('has-image');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const fileInput = document.getElementById('img-upload');
+  if (!fileInput) return;
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      pendingImage = { dataUrl: ev.target.result, mimeType: file.type };
+      renderImgPreview();
+      const attachBtn = document.getElementById('attach-btn');
+      if (attachBtn) attachBtn.classList.add('has-image');
+    };
+    reader.readAsDataURL(file);
+    fileInput.value = '';
+  });
+});
+
+// ── Auto Routing ──
+const ROUTE_RULES = [
+  {
+    test: (_t, hasImg) => hasImg,
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    reason: '圖片分析',
+  },
+  {
+    test: (t) => /code|程式|debug|函[數式]|function|class|\bapi\b|sql|bash|script|演算法|implement/i.test(t) || t.length > 400,
+    model: 'llama-3.3-70b-versatile',
+    reason: '程式/複雜推理',
+  },
+  {
+    test: (t) => t.length < 80,
+    model: 'llama-3.1-8b-instant',
+    reason: '簡短問題',
+  },
+  {
+    test: () => true,
+    model: 'moonshotai/kimi-k2-instruct',
+    reason: '一般對話',
+  },
+];
+
+function autoRoute(text, hasImage) {
+  for (const rule of ROUTE_RULES) {
+    if (rule.test(text, hasImage)) return { model: rule.model, reason: rule.reason };
+  }
+}
+
+function _escHTML(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // ── Auto-resize textarea ──
 const input = document.getElementById('user-input');
@@ -128,15 +204,20 @@ function getConfig() {
 }
 
 // ── Build request ──
-function buildRequest(cfg, messages, stream) {
-  const body = JSON.stringify({
+function buildRequest(cfg, messages, stream, tools) {
+  const payload = {
     model:       cfg.model,
     max_tokens:  cfg.maxTokens,
     temperature: cfg.temperature,
     top_p:       cfg.topP,
     stream:      stream,
     messages,
-  });
+  };
+  if (tools && tools.length > 0) {
+    payload.tools       = tools;
+    payload.tool_choice = 'auto';
+  }
+  const body = JSON.stringify(payload);
 
   if (cfg.provider === 'ollama') {
     return {
@@ -264,39 +345,89 @@ async function sendMessage() {
     return;
   }
 
-  const text = input.value.trim();
-  if (!text) return;
+  const text         = input.value.trim();
+  const capturedImage = pendingImage;
+  const hasImage     = !!capturedImage;
 
-  // /ppt command
-  if (checkPptCommand(text)) {
+  if (!text && !hasImage) return;
+
+  // /ppt command (text only)
+  if (text && checkPptCommand(text)) {
     input.value = '';
     input.style.height = 'auto';
     return;
   }
 
+  // ── Auto Routing ──
+  let routeInfo = null;
+  if (document.getElementById('auto-route-toggle')?.checked && cfg.provider === 'groq') {
+    routeInfo = autoRoute(text, hasImage);
+    cfg.model = routeInfo.model;
+    document.getElementById('model-badge').textContent =
+      routeInfo.model.split('/').pop().replace(/-instruct$/, '');
+  }
+
   input.value = '';
   input.style.height = 'auto';
+  clearPendingImage();
   document.getElementById('send-btn').disabled = true;
   isStreaming = true;
 
-  addMessage('user', text);
-  history.push({ role: 'user', content: text });
+  // ── Show user message in UI ──
+  const userTextEl = addMessage('user', '');
+  if (hasImage) {
+    userTextEl.innerHTML =
+      `<img src="${capturedImage.dataUrl}" class="uploaded-img-thumb" alt="uploaded image" />`
+      + (text ? `<div class="uploaded-img-caption">${_escHTML(text)}</div>` : '');
+  } else {
+    userTextEl.textContent = text;
+  }
+
+  // Store text-only in history (keeps memory.js / history.js compatible)
+  history.push({ role: 'user', content: text || '（圖片）' });
 
   // Trim memory
   const maxMsgs = cfg.memoryTurns * 2;
   if (history.length > maxMsgs) history = history.slice(history.length - maxMsgs);
 
+  // ── Build API messages (multimodal for current turn if image) ──
+  const ltmText    = (typeof getLTMInjection === 'function') ? getLTMInjection() : '';
+  const histForApi = history.map((m, i) => {
+    if (hasImage && i === history.length - 1 && m.role === 'user') {
+      const parts = [];
+      if (text) parts.push({ type: 'text', text });
+      parts.push({ type: 'image_url', image_url: { url: capturedImage.dataUrl } });
+      return { role: 'user', content: parts };
+    }
+    return m;
+  });
+  const messages = [{ role: 'system', content: cfg.systemPrompt + ltmText }, ...histForApi];
+
+  // ── AI message bubble ──
   const aiTextEl = addMessage('ai', '');
-  const cursor   = document.createElement('span');
+  if (routeInfo) {
+    const aiDiv    = document.querySelector('.msg-wrap .msg.ai:last-child');
+    const shortMod = routeInfo.model.split('/').pop().replace(/-instruct$/, '');
+    aiDiv.querySelector('.msg-name').insertAdjacentHTML(
+      'afterend',
+      `<span class="route-tag">🔀 ${routeInfo.reason} · ${shortMod}</span>`
+    );
+  }
+
+  const cursor = document.createElement('span');
   cursor.className = 'cursor';
   aiTextEl.appendChild(cursor);
 
   let fullReply = '';
 
-  const messages = [{ role: 'system', content: cfg.systemPrompt }, ...history];
+  // Tools are only supported for Groq (not Ollama)
+  const tools    = (typeof getToolDefinitions === 'function') ? getToolDefinitions() : [];
+  const useTools = tools.length > 0 && cfg.provider !== 'ollama';
+  // Disable streaming when tools are active (need full JSON response to parse tool_calls)
+  const streamMode = cfg.streaming && !useTools;
 
   try {
-    const req  = buildRequest(cfg, messages, cfg.streaming);
+    const req  = buildRequest(cfg, messages, streamMode, useTools ? tools : []);
     const resp = await fetch(req.url, { method: 'POST', headers: req.headers, body: req.body });
 
     if (!resp.ok) {
@@ -304,7 +435,51 @@ async function sendMessage() {
       throw new Error(err.error?.message || `HTTP ${resp.status} ${resp.statusText}`);
     }
 
-    if (cfg.streaming) {
+    if (useTools) {
+      // ── Tool call loop ──────────────────────────────────────────────────
+      let data      = await resp.json();
+      let loopMsgs  = [...histForApi]; // local copy; not written back to history
+      let loopCount = 0;
+      const MAX_TOOL_LOOPS = 5;
+
+      const toolContainer = document.createElement('div');
+      toolContainer.className = 'tool-calls-container';
+      aiTextEl.appendChild(toolContainer);
+
+      while (data.choices?.[0]?.finish_reason === 'tool_calls' && loopCount < MAX_TOOL_LOOPS) {
+        const assistantMsg = data.choices[0].message;
+        loopMsgs.push(assistantMsg);
+
+        for (const tc of assistantMsg.tool_calls || []) {
+          let argsObj = {};
+          try { argsObj = JSON.parse(tc.function.arguments || '{}'); } catch {}
+          const resultObj = await executeTool(tc.function.name, argsObj);
+          renderToolBlock(toolContainer, tc.function.name, argsObj, resultObj);
+          loopMsgs.push({
+            role:         'tool',
+            tool_call_id: tc.id,
+            content:      JSON.stringify(resultObj),
+          });
+        }
+
+        const sysMsg  = { role: 'system', content: cfg.systemPrompt + ltmText };
+        const req2    = buildRequest(cfg, [sysMsg, ...loopMsgs], false, tools);
+        const resp2   = await fetch(req2.url, { method: 'POST', headers: req2.headers, body: req2.body });
+        if (!resp2.ok) throw new Error(`HTTP ${resp2.status}`);
+        data = await resp2.json();
+        loopCount++;
+      }
+
+      fullReply = data.choices?.[0]?.message?.content ?? '';
+      if (fullReply) {
+        const replyDiv = document.createElement('div');
+        replyDiv.className = 'tool-final-reply';
+        replyDiv.textContent = fullReply;
+        aiTextEl.appendChild(replyDiv);
+      }
+      // ────────────────────────────────────────────────────────────────────
+
+    } else if (streamMode) {
       const reader  = resp.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
@@ -409,7 +584,7 @@ let apiKeys = { groq: '', hf: '' };
 
 async function loadApiKeys() {
   try {
-    const res  = await fetch('./config/api_key.config');
+    const res  = await fetch('./config/api_key.config', { cache: 'no-store' });
     const text = await res.text();
     text.split('\n').forEach(line => {
       line = line.trim();

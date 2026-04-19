@@ -91,12 +91,25 @@
         <input type="checkbox" id="streaming-toggle" checked />
         <label for="streaming-toggle" class="toggle-label">Streaming（逐字顯示）</label>
       </div>
+      <div class="toggle-row" style="margin-top:6px;">
+        <input type="checkbox" id="auto-route-toggle" />
+        <label for="auto-route-toggle" class="toggle-label">🔀 Auto Route（自動選模型）</label>
+      </div>
+      <div class="toggle-row" style="margin-top:6px;">
+        <input type="checkbox" id="tools-toggle" />
+        <label for="tools-toggle" class="toggle-label">🔧 Tools（工具呼叫）</label>
+      </div>
     </div>
 
     <!-- Actions -->
     <div class="sidebar-section">
       <button class="btn-summarize" id="summarize-btn" onclick="summarizeHistory()">📝 摘要對話 → System Prompt</button>
       <button class="btn-clear" onclick="clearHistory()">🗑 清除對話記憶</button>
+    </div>
+
+    <!-- Long-term Memory -->
+    <div class="sidebar-section">
+      <div id="ltm-panel"><!-- populated by memory.js --></div>
     </div>
 
   </div><!-- end sidebar-content -->
@@ -126,22 +139,28 @@
   </div>
 
   <div id="input-area">
+    <div id="img-preview"></div>
     <div class="input-box">
+      <button id="attach-btn" onclick="triggerImgUpload()" title="上傳圖片（多模態）">📎</button>
       <textarea id="user-input" placeholder="輸入訊息… (Enter 送出，Shift+Enter 換行)" rows="1"></textarea>
       <button id="image-btn" onclick="generateImageFromInput()" title="AI 生圖">🎨</button>
       <button id="ppt-btn" onclick="generatePptFromInput()" title="AI 製作簡報">🎞️</button>
       <button id="send-btn" onclick="sendMessage()">➤</button>
     </div>
-    <p class="hint">Streaming • 短期記憶 • 自訂參數 • 🎨 生圖</p>
+    <p class="hint">Streaming • 短期記憶 • 自訂參數 • 📎 多模態 • 🔀 Auto Route • 🎨 生圖</p>
   </div>
 </main>
 
 <!-- PPT hidden inputs -->
 <input type="hidden" id="ppt-topic" />
 <input type="hidden" id="ppt-slides" value="6" />
+<!-- Multimodal hidden file input -->
+<input type="file" id="img-upload" accept="image/*" style="display:none" />
 
 <script src="app.js"></script>
+<script src="tools.js"></script>
 <script src="ppt.js"></script>
 <script src="history.js"></script>
+<script src="memory.js"></script>
 </body>
 </html>

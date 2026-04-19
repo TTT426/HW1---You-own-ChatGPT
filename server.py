@@ -7,21 +7,39 @@ server.py  —  FastAPI 後端
     GET  /download/{job_id}          → 下載已產生的 pptx
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from pathlib import Path
-from urllib.parse import quote
-import subprocess, uuid, io, tempfile, shutil
+from urllib.parse import quote, quote as url_quote
+import subprocess, uuid, io, tempfile, shutil, urllib.request, urllib.parse, json as _json
+import logging, datetime
 
 from render_ppt import detect_layouts, render_slide
 from pptx import Presentation
+import fitz  # PyMuPDF — PDF → PNG，不依賴 pdftoppm
 
 TEMPLATE_DIR = Path('./input')
 PREVIEW_DIR  = Path('./cache/previews')   # 範本預覽 PDF
 JOBS_DIR     = Path('./cache/jobs')       # 每次生成的暫存 pptx / pdf
+
+# ── Debug Logger ─────────────────────────────────────────────────────────────
+LOG_DIR  = Path('./cache/logs')
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / 'debug.log'
+
+logging.basicConfig(
+    level    = logging.DEBUG,
+    format   = '%(asctime)s [%(levelname)s] %(message)s',
+    datefmt  = '%Y-%m-%d %H:%M:%S',
+    handlers = [
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler(),   # 同時印到 terminal
+    ]
+)
+log = logging.getLogger('server')
 
 app = FastAPI()
 
@@ -79,19 +97,41 @@ def pptx_to_pdf(pptx_path: Path, out_dir: Path) -> Optional[Path]:
 
 
 def pdf_to_thumbnail(pdf_path: Path, out_path: Path, dpi: int = 150) -> bool:
-    """PDF 第一頁 → PNG 縮圖"""
-    stem = out_path.stem + '-thumb'
-    subprocess.run(
-        ['pdftoppm', '-png', '-r', str(dpi), '-f', '1', '-l', '1',
-         str(pdf_path), str(out_path.parent / stem)],
-        capture_output=True, text=True, timeout=30
-    )
-    # pdftoppm 輸出可能是 stem-1.png 或 stem-01.png，用 glob 找
-    matches = sorted(out_path.parent.glob(f"{stem}*.png"))
-    if matches:
-        matches[0].rename(out_path)
+    """PDF 第一頁 → PNG 縮圖（使用 PyMuPDF，不依賴 pdftoppm）"""
+    log.debug(f'pdf_to_thumbnail: {pdf_path} → {out_path}  dpi={dpi}')
+    try:
+        doc  = fitz.open(str(pdf_path))
+        page = doc[0]
+        mat  = fitz.Matrix(dpi / 72, dpi / 72)   # 72 是 PDF 預設 DPI
+        pix  = page.get_pixmap(matrix=mat, alpha=False)
+        pix.save(str(out_path))
+        doc.close()
+        log.debug(f'pdf_to_thumbnail: 成功，檔案大小={out_path.stat().st_size} bytes')
         return True
-    return False
+    except Exception as e:
+        log.error(f'pdf_to_thumbnail 失敗: {e}')
+        return False
+
+
+def pdf_to_slides(pdf_path: Path, out_dir: Path, dpi: int = 150) -> list[Path]:
+    """PDF 所有頁 → PNG 列表（使用 PyMuPDF，取代 pdftoppm）"""
+    log.debug(f'pdf_to_slides: {pdf_path} → {out_dir}  dpi={dpi}')
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    try:
+        doc = fitz.open(str(pdf_path))
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
+        for i, page in enumerate(doc):
+            pix      = page.get_pixmap(matrix=mat, alpha=False)
+            out_path = out_dir / f'slide-{i + 1}.png'
+            pix.save(str(out_path))
+            paths.append(out_path)
+            log.debug(f'  第 {i+1} 頁 → {out_path.name}')
+        doc.close()
+        log.info(f'pdf_to_slides: 共產生 {len(paths)} 張投影片圖片')
+    except Exception as e:
+        log.error(f'pdf_to_slides 失敗: {e}')
+    return paths
 
 
 # ══════════════════════════════════════════════
@@ -105,20 +145,20 @@ def startup():
         print("⚠️  input/ 資料夾不存在"); return
 
     for pptx in TEMPLATE_DIR.glob("*.pptx"):
-        pdf  = PREVIEW_DIR / (pptx.stem + '.pdf')
+        pdf   = PREVIEW_DIR / (pptx.stem + '.pdf')
         thumb = PREVIEW_DIR / (pptx.stem + '.png')
         stale = not pdf.exists() or pdf.stat().st_mtime < pptx.stat().st_mtime
         if stale:
-            print(f"🔄 產生預覽：{pptx.name}")
+            log.info(f'[startup] 產生預覽 PDF：{pptx.name}')
             pdf = pptx_to_pdf(pptx, PREVIEW_DIR)
         if pdf and (stale or not thumb.exists()):
-            print(f"🖼  產生縮圖：{pptx.stem}.png")
+            log.info(f'[startup] 產生縮圖：{pptx.stem}.png')
             pdf_to_thumbnail(pdf, thumb)
         try:
             get_layout_map(pptx.name)
         except Exception as e:
-            print(f"⚠️  layout 偵測失敗 {pptx.name}：{e}")
-    print("✅ 啟動完成")
+            log.warning(f'[startup] layout 偵測失敗 {pptx.name}：{e}')
+    log.info('[startup] ✅ 啟動完成')
 
 
 # ══════════════════════════════════════════════
@@ -180,6 +220,7 @@ def generate_pptx_preview(req: GenerateRequest):
     if not template_path.exists():
         raise HTTPException(404, f"找不到範本：{template_name}")
 
+    log.info(f'[generate] 開始 topic={req.topic!r} template={template_name} slides={len(req.slides)}')
     try:
         # 1. 產生 pptx
         layout_map = get_layout_map(template_name)
@@ -204,18 +245,11 @@ def generate_pptx_preview(req: GenerateRequest):
         if not pdf_path:
             raise RuntimeError("PDF 轉換失敗，請確認 soffice 是否正常")
 
-        # 4. 產生每頁縮圖（用 pdftoppm 轉所有頁）
-        thumb_dir = job_dir / 'thumbs'
-        thumb_dir.mkdir(exist_ok=True)
-        subprocess.run(
-            ['pdftoppm', '-png', '-r', '150',
-             str(pdf_path), str(thumb_dir / 'slide')],
-            capture_output=True, text=True, timeout=60
-        )
-        # 統一檔名格式為 slide-001.png, slide-002.png ...
-        for f in sorted(thumb_dir.glob('slide*.png')):
-            # 已經是正確格式，不需要更名
-            pass
+        # 4. 產生每頁縮圖（PyMuPDF）
+        log.info(f'[generate] job_id={job_id} 開始產生投影片縮圖')
+        thumb_dir  = job_dir / 'thumbs'
+        slide_imgs = pdf_to_slides(pdf_path, thumb_dir)
+        log.info(f'[generate] 完成，共 {len(slide_imgs)} 張')
 
         return {
             "job_id"     : job_id,
@@ -225,6 +259,7 @@ def generate_pptx_preview(req: GenerateRequest):
     except HTTPException:
         raise
     except Exception as e:
+        log.exception(f'[generate] 失敗：{e}')
         raise HTTPException(500, str(e))
 
 
@@ -297,25 +332,81 @@ def update_slide(job_id: str, slide_idx: int, body: SlideUpdate):
         if not pdf_path:
             raise RuntimeError("PDF 轉換失敗")
 
-        # 重新產生所有縮圖
+        # 重新產生所有縮圖（PyMuPDF）
         thumb_dir = job_dir / 'thumbs'
         for old_img in thumb_dir.glob("*.png"):
             old_img.unlink()
-        subprocess.run(
-            ['pdftoppm', '-png', '-r', '150',
-             str(pdf_path), str(thumb_dir / 'slide')],
-            capture_output=True, timeout=60
-        )
+        log.info(f'[update_slide] job_id={job_id} slide_idx={slide_idx} 重新產生縮圖')
+        pdf_to_slides(pdf_path, thumb_dir)
 
-        # 回傳更新後的該頁圖片 URL
+        # 回傳更新後的縮圖 URL 列表
         thumbs = sorted(thumb_dir.glob("*.png"))
-        urls = [f"/job-slide/{job_id}/{p.name}" for p in thumbs]
+        urls   = [f"/job-slide/{job_id}/{p.name}" for p in thumbs]
+        log.info(f'[update_slide] 完成，共 {len(urls)} 張')
         return {"slides": urls, "updated_idx": slide_idx}
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# ══════════════════════════════════════════════
+#  GET /search?q=...&max_results=4
+#  後端代理 DuckDuckGo Instant Answer API（避免瀏覽器 CORS 限制）
+# ══════════════════════════════════════════════
+
+@app.get("/search")
+def search_web(q: str = Query(..., description="搜尋關鍵字"),
+               max_results: int = Query(4, ge=1, le=8),
+               lang: str = Query("zh", description="語言：zh（中文維基）或 en（英文維基）")):
+    """
+    搜尋後端：先查 Wikipedia 標題搜尋，再取各頁面的摘要。
+    支援中文（lang=zh）與英文（lang=en）。
+    """
+    encoded  = urllib.parse.quote(q)
+    wiki_api = f"https://{lang}.wikipedia.org/w/api.php"
+
+    # 1. 搜尋關鍵字 → 取得相關頁面標題
+    search_url = (
+        f"{wiki_api}?action=query&list=search"
+        f"&srsearch={encoded}&srlimit={max_results}"
+        f"&format=json&utf8=1"
+    )
+    try:
+        req = urllib.request.Request(search_url, headers={"User-Agent": "HW1-ChatGPT/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            search_data = _json.loads(r.read().decode())
+    except Exception as e:
+        raise HTTPException(502, f"Wikipedia 搜尋失敗：{e}")
+
+    hits   = search_data.get("query", {}).get("search", [])
+    titles = [h["title"] for h in hits[:max_results]]
+
+    if not titles:
+        return {"query": q, "lang": lang, "results": [], "note": "沒有找到相關結果"}
+
+    # 2. 逐一取各頁面摘要
+    results = []
+    for title in titles:
+        summary_url = (
+            f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/"
+            + urllib.parse.quote(title.replace(" ", "_"))
+        )
+        try:
+            req2 = urllib.request.Request(summary_url, headers={"User-Agent": "HW1-ChatGPT/1.0"})
+            with urllib.request.urlopen(req2, timeout=8) as r2:
+                page = _json.loads(r2.read().decode())
+            results.append({
+                "title":   page.get("title", title),
+                "snippet": page.get("extract", "")[:400],
+                "url":     page.get("content_urls", {}).get("desktop", {}).get("page", ""),
+                "source":  f"wikipedia-{lang}",
+            })
+        except Exception:
+            continue  # 跳過取摘要失敗的頁面
+
+    return {"query": q, "lang": lang, "results": results}
 
 
 @app.get("/download/{job_id}")
