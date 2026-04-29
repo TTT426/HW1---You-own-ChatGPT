@@ -15,7 +15,7 @@ from typing import Optional, List, Dict
 from pathlib import Path
 from urllib.parse import quote, quote as url_quote
 import subprocess, uuid, io, tempfile, shutil, urllib.request, urllib.parse, json as _json
-import logging, datetime
+import logging, datetime, math as _math, re as _re
 
 from render_ppt import detect_layouts, render_slide
 from pptx import Presentation
@@ -40,6 +40,16 @@ logging.basicConfig(
     ]
 )
 log = logging.getLogger('server')
+
+# Load HF API key for image generation MCP tool
+HF_API_KEY: str = ''
+_hf_cfg = Path('./config/api_key.config')
+if _hf_cfg.exists():
+    for _ln in _hf_cfg.read_text(encoding='utf-8').splitlines():
+        _ln = _ln.strip()
+        if _ln.startswith('HF_API_KEY='):
+            HF_API_KEY = _ln.split('=', 1)[1].strip()
+            break
 
 app = FastAPI()
 
@@ -352,8 +362,140 @@ def update_slide(job_id: str, slide_idx: int, body: SlideUpdate):
 
 
 # ══════════════════════════════════════════════
+#  MCP-compatible Tool Server
+#  GET  /mcp/tools       → 工具清單（MCP manifest）
+#  POST /mcp/tools/call  → 執行工具（統一入口）
+# ══════════════════════════════════════════════
+
+MCP_TOOLS = [
+    {
+        "name": "get_datetime",
+        "description": "取得目前的日期、時間與星期（台北時區）",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "calculate",
+        "description": "計算數學運算式，支援 + - * / ^ sqrt abs sin cos tan log pi e 等",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string",
+                    "description": "要計算的算式，例如 '2^10' 或 'sqrt(144) + pi'",
+                },
+            },
+            "required": ["expression"],
+        },
+    },
+    {
+        "name": "search_web",
+        "description": "透過 Wikipedia 搜尋主題資訊，回傳標題、摘要與連結。中文主題用 lang='zh'，英文主題用 lang='en'",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query":       {"type": "string",  "description": "搜尋關鍵字"},
+                "lang":        {"type": "string",  "description": "語言版本：zh（預設）或 en", "enum": ["zh", "en"]},
+                "max_results": {"type": "number",  "description": "回傳筆數，預設 4，最多 8"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "generate_image",
+        "description": "依照使用者的描述生成一張圖片（FLUX.1-schnell）。使用者說要「生成圖片」、「畫一張」、「generate an image」等時呼叫。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "詳細的圖片描述，英文效果較佳，例如 'a cute cat sitting on a wooden desk, photorealistic'",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+]
+
+
+class MCPCallRequest(BaseModel):
+    name: str
+    arguments: Dict = {}
+
+
+@app.get("/mcp/tools")
+def mcp_list_tools():
+    """MCP 工具清單 — 供前端或外部 MCP client 查詢可用工具"""
+    return {"tools": MCP_TOOLS}
+
+
+@app.post("/mcp/tools/call")
+def mcp_call_tool(req: MCPCallRequest):
+    """MCP 工具呼叫 — 前端 tool use 的統一執行入口"""
+    log.info(f'[MCP] call name={req.name!r} args={req.arguments}')
+
+    if req.name == "get_datetime":
+        tz_taipei = datetime.timezone(datetime.timedelta(hours=8))
+        now       = datetime.datetime.now(tz=tz_taipei)
+        weekdays  = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        result    = {
+            "datetime": now.strftime("%Y/%m/%d %H:%M:%S"),
+            "weekday":  weekdays[now.weekday()],
+            "iso":      now.isoformat(),
+        }
+        return {"content": [{"type": "text", "text": _json.dumps(result, ensure_ascii=False)}]}
+
+    elif req.name == "calculate":
+        expr = str(req.arguments.get("expression", ""))
+        try:
+            safe_expr = _re.sub(r'\^', r'**', expr)
+            safe_ns   = {k: getattr(_math, k) for k in dir(_math) if not k.startswith('_')}
+            safe_ns.update({"abs": abs, "round": round})
+            value  = eval(safe_expr, {"__builtins__": {}}, safe_ns)  # noqa: S307
+            result = {"expression": expr, "result": str(value)}
+        except Exception as e:
+            raise HTTPException(400, f"計算錯誤：{e}")
+        return {"content": [{"type": "text", "text": _json.dumps(result, ensure_ascii=False)}]}
+
+    elif req.name == "search_web":
+        q           = req.arguments.get("query", "")
+        lang        = req.arguments.get("lang", "zh")
+        max_results = int(min(req.arguments.get("max_results", 4), 8))
+        result      = search_web(q=q, max_results=max_results, lang=lang)
+        return {"content": [{"type": "text", "text": _json.dumps(result, ensure_ascii=False)}]}
+
+    elif req.name == "generate_image":
+        if not HF_API_KEY:
+            raise HTTPException(400, "HF_API_KEY 未設定，請在 config/api_key.config 加入 HF_API_KEY=hf_...")
+        prompt = req.arguments.get("prompt", "").strip()
+        if not prompt:
+            raise HTTPException(400, "請提供 prompt")
+        log.info(f'[MCP generate_image] prompt={prompt!r}')
+        hf_url = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
+        hf_req = urllib.request.Request(
+            hf_url,
+            data=_json.dumps({"inputs": prompt}).encode(),
+            headers={"Authorization": f"Bearer {HF_API_KEY}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(hf_req, timeout=60) as r:
+                img_bytes = r.read()
+        except Exception as e:
+            raise HTTPException(502, f"Hugging Face API 失敗：{e}")
+        gen_dir  = Path('./cache/generated')
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        img_name = f"{uuid.uuid4().hex[:8]}.png"
+        (gen_dir / img_name).write_bytes(img_bytes)
+        result = {"image_url": f"/generated/{img_name}", "prompt": prompt}
+        return {"content": [{"type": "text", "text": _json.dumps(result, ensure_ascii=False)}]}
+
+    else:
+        raise HTTPException(404, f"未知工具：{req.name}")
+
+
+# ══════════════════════════════════════════════
 #  GET /search?q=...&max_results=4
-#  後端代理 DuckDuckGo Instant Answer API（避免瀏覽器 CORS 限制）
+#  後端代理 Wikipedia（避免瀏覽器 CORS 限制）
 # ══════════════════════════════════════════════
 
 @app.get("/search")
@@ -407,6 +549,14 @@ def search_web(q: str = Query(..., description="搜尋關鍵字"),
             continue  # 跳過取摘要失敗的頁面
 
     return {"query": q, "lang": lang, "results": results}
+
+
+@app.get("/generated/{filename}")
+def get_generated_image(filename: str):
+    path = Path('./cache/generated') / filename
+    if not path.exists():
+        raise HTTPException(404, "圖片不存在")
+    return FileResponse(str(path), media_type="image/png")
 
 
 @app.get("/download/{job_id}")

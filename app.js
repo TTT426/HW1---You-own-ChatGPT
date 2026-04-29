@@ -358,6 +358,13 @@ async function sendMessage() {
     return;
   }
 
+  // Image generation intent — fallback when tools are OFF; tools ON → AI calls generate_image MCP tool
+  if (text && !hasImage && !document.getElementById('tools-toggle')?.checked && checkImageCommand(text)) {
+    input.value = '';
+    input.style.height = 'auto';
+    return;
+  }
+
   // ── Auto Routing ──
   let routeInfo = null;
   if (document.getElementById('auto-route-toggle')?.checked && cfg.provider === 'groq') {
@@ -401,7 +408,11 @@ async function sendMessage() {
     }
     return m;
   });
-  const messages = [{ role: 'system', content: cfg.systemPrompt + ltmText }, ...histForApi];
+  const toolsEnabled = document.getElementById('tools-toggle')?.checked;
+  const toolHint = toolsEnabled
+    ? '\n\n[工具使用原則] 可用工具：get_datetime（查時間／日期）、calculate（數學計算）、search_web（搜尋資料）、generate_image（生成圖片）。只在使用者明確需要時才呼叫，一般問候、聊天請直接回答，不要呼叫未列出的工具。'
+    : '';
+  const messages = [{ role: 'system', content: cfg.systemPrompt + ltmText + toolHint }, ...histForApi];
 
   // ── AI message bubble ──
   const aiTextEl = addMessage('ai', '');
@@ -421,8 +432,10 @@ async function sendMessage() {
   let fullReply = '';
 
   // Tools are only supported for Groq (not Ollama)
-  const tools    = (typeof getToolDefinitions === 'function') ? getToolDefinitions() : [];
-  const useTools = tools.length > 0 && cfg.provider !== 'ollama';
+  const tools = (typeof getToolDefinitions === 'function') ? getToolDefinitions() : [];
+  // Skip tools for pure greetings — prevents models from hallucinating tool calls on "hello?"
+  const GREETING_RE = /^(hi|hello|hey|你好|嗨|哈囉|哈|喂|早安|晚安|午安|good\s*(morning|night|afternoon))[!！?？.,。，\s]*$/i;
+  const useTools = tools.length > 0 && cfg.provider !== 'ollama' && !GREETING_RE.test(text.trim());
   // Disable streaming when tools are active (need full JSON response to parse tool_calls)
   const streamMode = cfg.streaming && !useTools;
 
@@ -717,6 +730,25 @@ function applyTranslations() {
 
 // ── Init ──
 Promise.all([loadApiKeys(), loadProviders(), loadUI()]).then(() => onProviderChange());
+
+// ── Image Generation Intent Detection ──
+function checkImageCommand(text) {
+  const t = text.trim();
+  const ZH_RE = /^(?:幫我|請)?(?:生成|畫|繪製)(?:一張|一幅|一個|張)?/u;
+  const EN_RE = /^(?:generate|create|draw|make|paint)\s+(?:(?:a|an)\s+)?(?:(?:image|picture|photo|illustration|drawing|art)\s+(?:of\s+)?)?/i;
+
+  if (!ZH_RE.test(t) && !EN_RE.test(t)) return false;
+
+  let prompt = t
+    .replace(ZH_RE, '')
+    .replace(EN_RE, '')
+    .replace(/\s*(?:的)?(?:圖片|圖|照片|插圖|圖像)$/u, '')
+    .replace(/\s*(?:image|picture|photo|illustration|drawing|art)$/i, '')
+    .trim();
+
+  showGeneratedImage(prompt || t);
+  return true;
+}
 
 // ── Image Generation (Hugging Face FLUX.1-schnell) ──
 function generateImageFromInput() {

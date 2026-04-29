@@ -53,63 +53,50 @@ const TOOL_DEFINITIONS = [
     },
   },
 
+  // ── 4. 圖片生成 ──────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'generate_image',
+      description: '依照使用者的描述生成一張圖片（FLUX.1-schnell）。使用者說要「生成圖片」、「畫一張」、「generate an image」等時呼叫。',
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: {
+            type: 'string',
+            description: '詳細的圖片描述，英文效果較佳，例如 "a cute cat sitting on a wooden desk, photorealistic"',
+          },
+        },
+        required: ['prompt'],
+      },
+    },
+  },
+
 ];
 
-// ── Tool Executors ────────────────────────────────────────────────────────────
+// ── MCP Tool Executor ─────────────────────────────────────────────────────────
+// All tools are executed server-side via the MCP-compatible endpoint.
+// The browser acts as a thin MCP client: it sends { name, arguments } and
+// receives { content: [{ type, text }] } per the MCP protocol spec.
+const MCP_BASE = 'http://localhost:8000';
+
 async function executeTool(name, args) {
-  switch (name) {
-
-    case 'get_datetime': {
-      const now = new Date();
-      return {
-        datetime: now.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }),
-        weekday:  now.toLocaleDateString('zh-TW', { weekday: 'long', timeZone: 'Asia/Taipei' }),
-        iso:      now.toISOString(),
-      };
+  try {
+    const resp = await fetch(`${MCP_BASE}/mcp/tools/call`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name, arguments: args }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return { error: err.detail || `MCP server error HTTP ${resp.status}` };
     }
-
-    case 'calculate': {
-      try {
-        const expr = String(args.expression || '')
-          .replace(/\^/g,        '**')
-          .replace(/\bsqrt\b/g,  'Math.sqrt')
-          .replace(/\babs\b/g,   'Math.abs')
-          .replace(/\bceil\b/g,  'Math.ceil')
-          .replace(/\bfloor\b/g, 'Math.floor')
-          .replace(/\bround\b/g, 'Math.round')
-          .replace(/\blog\b/g,   'Math.log')
-          .replace(/\blog2\b/g,  'Math.log2')
-          .replace(/\bsin\b/g,   'Math.sin')
-          .replace(/\bcos\b/g,   'Math.cos')
-          .replace(/\btan\b/g,   'Math.tan')
-          .replace(/\bpi\b/gi,   'Math.PI')
-          .replace(/\be\b/g,     'Math.E');
-        // Safety: reject anything that still has non-math identifiers after substitution
-        if (/[a-df-wyzA-DF-WYZ_$]/.test(expr.replace(/Math\.[a-zA-Z]+/g, ''))) {
-          throw new Error('不允許的字元');
-        }
-        const result = Function('"use strict"; return (' + expr + ')')();
-        return { expression: args.expression, result: String(result) };
-      } catch (e) {
-        return { error: '計算錯誤：' + e.message };
-      }
-    }
-
-    case 'search_web': {
-      try {
-        const q    = encodeURIComponent(args.query || '');
-        const max  = Math.min(args.max_results || 4, 8);
-        const lang = args.lang === 'en' ? 'en' : 'zh';
-        const resp = await fetch(`http://localhost:8000/search?q=${q}&max_results=${max}&lang=${lang}`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return await resp.json();
-      } catch (e) {
-        return { error: '搜尋失敗：' + e.message };
-      }
-    }
-
-    default:
-      return { error: `未知工具：${name}` };
+    const data = await resp.json();
+    // MCP response: { content: [{ type: "text", text: "..." }] }
+    const text = data.content?.[0]?.text ?? '';
+    try { return JSON.parse(text); } catch { return { result: text }; }
+  } catch (e) {
+    return { error: `MCP 呼叫失敗：${e.message}` };
   }
 }
 
@@ -128,6 +115,21 @@ function renderToolBlock(container, name, argsObj, resultObj) {
   const hasError = !!resultObj?.error;
   const block = document.createElement('div');
   block.className = 'tool-call-block' + (hasError ? ' tool-call-error' : '');
+
+  // Special rendering for image generation results
+  if (name === 'generate_image' && resultObj?.image_url && !hasError) {
+    block.innerHTML = `
+      <div class="tool-call-header">
+        <span>🎨</span>
+        <span class="tool-call-name">generate_image</span>
+      </div>
+      <img src="${MCP_BASE}${_escHTML(resultObj.image_url)}"
+           class="generated-img"
+           alt="${_escHTML(argsObj.prompt || '')}" />
+      <div class="img-caption">${_escHTML(argsObj.prompt || '')}</div>`;
+    container.appendChild(block);
+    return;
+  }
 
   block.innerHTML = `
     <div class="tool-call-header">
